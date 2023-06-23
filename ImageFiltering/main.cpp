@@ -41,16 +41,16 @@ void load_image(string image_path, string image2_path);
 void convolute();
 void draw();
 
-void convert_ColorRGB_to_Color(vector<ColorRGB> originalImage, vector<Color> image);
+void convert_ColorRGB_to_Color(vector<ColorRGB> originalImage, vector<Color>* imageP);
 
 void convert_Color_to_ColorRGB(vector<Color> originalImage);
 
 // Filters
 
 vector<float> blur_filter{
-   0.0, 0.2,  0.0,
-   0.2, 0.2,  0.2,
-   0.0, 0.2,  0.0
+   0.0, 0.0,  0.0,
+   0.0, 1.0,  0.0,
+   0.0, 0.0,  0.0
 };
 
 vector<float>sharpen_filter{
@@ -64,12 +64,12 @@ vector<float>emboss_filter{
   -1,  0,  1,
    0,  1,  1
 };
-double factor = 1.0;
-double bias = 0.0;
+double factor = 250.0;
+double bias = 255.0;
 
 // Global Variables
 
-vector<Color> zzzzzzzzzzzzzz, yyyyyyyy;
+vector<Color> imageToBuffer1, imageToBuffer2;
 unsigned long imageWidth;
 unsigned long imageHeight;
 
@@ -83,8 +83,8 @@ int main(int argc, char* argv[]) {
 
 	while (!done())
 	{
-		load_image("C:\\Users\\Jonathan  M.B\\Desktop\\ImageFiltering\\pics\\photo1.png",
-			"C:\\Users\\Jonathan  M.B\\Desktop\\ImageFiltering\\pics\\photo2.png");
+		load_image("D:\\Chromakey_cuda\\ImageFiltering\\pics\\chroma.png",
+			"D:\\Chromakey_cuda\\ImageFiltering\\pics\\background.png");
 
 
 		screen(imageWidth, imageHeight, 0, "Filters (Convolution)");
@@ -110,24 +110,25 @@ void load_image(string image_path, string image2_path) {
 	loadImage(loaded_image2, imageWidth, imageHeight, image2_path);
 
 	vector<Color> auxColor(loaded_image.size());
-	/*vector<Color> auxColor2(loaded_image2.size());*/
+	vector<Color> auxColor2(loaded_image2.size());
 
-	zzzzzzzzzzzzzz = auxColor;
-	//yyyyyyyy = auxColor2;
+	imageToBuffer1 = auxColor;
+	imageToBuffer2 = auxColor2;
 
 	vector<ColorRGB> auxColorRGB(loaded_image.size());
 	processedImage = auxColorRGB;
 
-	convert_ColorRGB_to_Color(loaded_image,zzzzzzzzzzzzzz);
-	//convert_ColorRGB_to_Color(loaded_image2, yyyyyyyy);
+	convert_ColorRGB_to_Color(loaded_image, &imageToBuffer1);
+	convert_ColorRGB_to_Color(loaded_image2, &imageToBuffer2);
 }
 
 void convolute() {
 	Buffer m_image;
+	Buffer m_image2;
 	Buffer m_filter;
 	Buffer m_result;
 
-	vector<Color> result(zzzzzzzzzzzzzz.size());
+	vector<Color> result(imageToBuffer1.size());
 
 	Context context(DEVICE);
 
@@ -135,31 +136,34 @@ void convolute() {
 
 	CommandQueue queue(context);
 
-	auto kernel = make_kernel<Buffer, Buffer, Buffer, int, int, float, float>(program, "convolute");
+	auto kernel = make_kernel<Buffer, Buffer, Buffer, Buffer, int, int, float, float>(program, "convolute");
 
 	Timer timer;
 
 	switch (currentFilter)
 	{
 	case 0: m_filter = Buffer(context, begin(blur_filter), end(blur_filter), true);
-		currentFilter = 1;
-		currentFilterName = "Blur";
+		factor+=1;
 		break;
 	case 1:  m_filter = Buffer(context, begin(emboss_filter), end(emboss_filter), true);
-		currentFilter = 2;
-		currentFilterName = "Emboss";
+		factor++;
+		cout << factor << endl;
 		break;
 	case 2:  m_filter = Buffer(context, begin(sharpen_filter), end(sharpen_filter), true);
-		currentFilter = 0;
-		currentFilterName = "Sharpen";
+		factor++;
+		cout << factor << endl;
 		break;
 	}
-	m_image = Buffer(context, begin(zzzzzzzzzzzzzz), end(zzzzzzzzzzzzzz), true);
+	m_image = Buffer(context, begin(imageToBuffer1), end(imageToBuffer1), true);
+	m_image2 = Buffer(context, begin(imageToBuffer2), end(imageToBuffer2), true);
 
 	m_result = Buffer(context, CL_MEM_WRITE_ONLY, sizeof(Color) * (imageWidth * imageHeight));
 
+	float green = 0.0;
+
 	kernel(EnqueueArgs(queue, NDRange(imageWidth, imageHeight)),
 		m_image,
+		m_image2,
 		m_result,
 		m_filter,
 		imageWidth,
@@ -186,8 +190,8 @@ void draw() {
 	redraw();
 }
 
-void convert_ColorRGB_to_Color(vector<ColorRGB> originalImage, vector<Color>* image) {
-	vector<Color>::iterator result_i = image.begin();
+void convert_ColorRGB_to_Color(vector<ColorRGB> originalImage, vector<Color>* imageP) {
+	vector<Color>::iterator result_i = (*imageP).begin();
 
 	for (vector<ColorRGB>::iterator i = originalImage.begin(); i != originalImage.end(); i++) {
 		(*result_i).r = (*i).r;
@@ -202,6 +206,7 @@ void convert_Color_to_ColorRGB(vector<Color> originalImage) {
 	vector<ColorRGB>::iterator result_i = processedImage.begin();
 
 	for (vector<Color>::iterator i = originalImage.begin(); i != originalImage.end(); i++) {
+		//cout << "r: " << (*i).r << "g: " << (*i).g << "b: " << (*i).b << endl;
 		(*result_i).r = (*i).r;
 		(*result_i).g = (*i).g;
 		(*result_i).b = (*i).b;
